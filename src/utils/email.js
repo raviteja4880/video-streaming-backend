@@ -12,12 +12,12 @@ const transporter = nodemailer.createTransport({
 
 async function sendEmail({ to, subject, html }) {
   const info = await transporter.sendMail({
-    from: process.env.MAIL_FROM,
+    from: `"Streamify" <${process.env.MAIL_FROM}>`,
     to,
     subject,
     html,
   });
-  console.log('✅ Email sent successfully:', info.messageId);
+  console.log(`Email sent successfully to ${to}:`, info.messageId);
 }
 
 module.exports = { sendEmail };

@@ -20,15 +20,11 @@ exports.updateProfile = async (req, res) => {
 // New: Upload avatar and update user profile
 exports.uploadAvatar = async (req, res, next) => {
   try {
-    console.log('🟢 Incoming upload request...');
-    console.log('File info:', req.file);
-    console.log('User info:', req.user);
-
     if (!req.file) {
       throw new Error('No file received. Check your Postman form-data key (must be "avatar").');
     }
 
-    req.user.avatar = req.file.path; // Cloudinary returns full URL in .path
+    req.user.avatar = req.file.path; 
     await req.user.save();
 
     res.json({
@@ -37,7 +33,7 @@ exports.uploadAvatar = async (req, res, next) => {
       message: 'Avatar uploaded successfully!',
     });
   } catch (err) {
-    console.error('❌ Upload failed:', err);
-    next(err); // Let global error handler return JSON
+    console.error('Upload failed:', err);
+    next(err); 
   }
 };

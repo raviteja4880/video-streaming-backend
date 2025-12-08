@@ -8,7 +8,10 @@ const videoSchema = new mongoose.Schema({
   url: { type: String, required: true },
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   shares: { type: Number, default: 0 },
-  views: { type: Number, default: 0 }
+  views: { type: Number, default: 0 },
+  viewsBy: [{ type: String }], 
+  totalWatchTime: { type: Number, default: 0 },
+  avgWatchTime: { type: Number, default: 0 } 
 }, { timestamps: true });
 
 module.exports = mongoose.model('Video', videoSchema);

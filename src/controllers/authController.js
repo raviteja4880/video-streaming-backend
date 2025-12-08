@@ -7,31 +7,46 @@ function genOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+/** REGISTER USER **/
 exports.register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
     const exists = await User.findOne({ email });
     if (exists) return res.status(400).json({ message: 'Email already in use' });
+
     const user = await User.create({ name, email, password });
+
     const otp = genOTP();
     user.otpCode = otp;
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
-    try {
-      const welcome = renderTemplate('welcome', { name: user.name });
-      await sendEmail({ to: user.email, subject: 'Welcome to Streamify 🎬', html: welcome });
-    } catch (e) { console.error('Welcome email failed:', e.message); }
+
+    // Send only OTP mail here — not the welcome mail yet
     try {
       const otpHtml = renderTemplate('otp', { otp });
       await sendEmail({ to: user.email, subject: 'Your Streamify OTP', html: otpHtml });
-    } catch (e) { console.error('OTP email failed:', e.message); }
+    } catch (e) {
+      console.error('OTP email failed:', e.message);
+    }
+
     const token = generateToken(user._id);
-    res.status(201).json({ token, user: { id: user._id, name: user.name, email: user.email, avatar: user.avatar, bio: user.bio }, needsVerification: true });
+    res.status(201).json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        bio: user.bio,
+      },
+      needsVerification: true,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
+/** LOGIN **/
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -39,29 +54,58 @@ exports.login = async (req, res) => {
     if (!user || !(await user.matchPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
+
     const token = generateToken(user._id);
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email, avatar: user.avatar, bio: user.bio } });
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        bio: user.bio,
+      },
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
+/** VERIFY OTP **/
 exports.verifyOtp = async (req, res) => {
   try {
     const { email, code } = req.body;
     const user = await User.findOne({ email });
+
     if (!user || !user.otpCode) return res.status(400).json({ message: 'Invalid request' });
     if (user.otpCode !== code) return res.status(400).json({ message: 'Invalid code' });
     if (user.otpExpires && user.otpExpires < new Date()) return res.status(400).json({ message: 'Code expired' });
+
+    // Clear OTP after successful verification
     user.otpCode = null;
     user.otpExpires = null;
     await user.save();
-    res.json({ message: 'Email verified' });
+
+    // Send Welcome Email 
+    try {
+      const welcomeHtml = renderTemplate('welcome', { name: user.name });
+      await sendEmail({
+        to: user.email,
+        subject: 'Welcome to Streamify',
+        html: welcomeHtml,
+      });
+      console.log(`Welcome email sent to ${user.email}`);
+    } catch (mailErr) {
+      console.error('Welcome email failed:', mailErr.message);
+    }
+
+    res.json({ message: 'Email verified successfully' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
+/** RESEND OTP **/
 exports.resendOtp = async (req, res) => {
   try {
     const { email } = req.body;
@@ -94,4 +138,3 @@ exports.resendOtp = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
-
