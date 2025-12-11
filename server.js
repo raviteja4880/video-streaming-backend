@@ -7,8 +7,11 @@
 
   const routes = require('./src/routes');         
   const userRoutes = require('./src/routes/userRoutes');
+  const historyRoutes = require("./src/routes/historyRoutes.js");
 
   const app = express();
+
+  app.set('trust proxy', true);
 
   // Middleware
   app.use(cors());
@@ -21,7 +24,8 @@
   app.use('/uploads/images', express.static(path.join(__dirname, 'uploads', 'images')));
 
   // Routes
-  app.use('/api/users', userRoutes); 
+  app.use('/api/users', userRoutes);
+  app.use('/api/history', historyRoutes);
   app.use('/api', routes);  
 
   // Health check

@@ -30,18 +30,26 @@ exports.uploadVideo = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No video file uploaded' });
 
-    // Upload to Cloudinary
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      resource_type: 'video',
-      folder: 'streamify/videos',
+    // Upload video to Cloudinary
+    const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+      resource_type: "video",
+    });
+
+    // Generate a video thumbnail URL using Cloudinary transformation
+    const publicId = uploadResult.public_id;
+    const thumbnailUrl = cloudinary.url(publicId + ".jpg", {
+      resource_type: "video",
+      format: "jpg",
+      transformation: [{ width: 640, height: 360, crop: "fill", quality: "auto" }],
     });
 
     const video = new Video({
       user: req.user._id,
-      title: req.body.title || 'Untitled Video',
-      description: req.body.description || '',
-      url: result.secure_url,
-      thumbnail: req.body.thumbnail || '',
+      title: req.body.title,
+      description: req.body.description,
+      url: uploadResult.secure_url,
+      thumbnail: thumbnailUrl,
+      duration: Math.floor(uploadResult.duration) || 0,
     });
 
     await video.save();
@@ -150,53 +158,103 @@ exports.deleteVideo = async (req, res) => {
   }
 };
 
-// 10.view count increment
+// 10. View count increment
 exports.addView = async (req, res) => {
   try {
     const video = await Video.findById(req.params.id);
-    if (!video) return res.status(404).json({ message: 'Video not found' });
+    if (!video) return res.status(404).json({ message: "Video not found" });
 
-    const userId = req.user?._id?.toString() || req.ip;
+    // Determine unique viewer identity
+    const userId =
+      req.user?._id?.toString() || req.viewerId || req.ip || "unknown";
 
+    // Add view only if not already counted
     if (!video.viewsBy.includes(userId)) {
       video.viewsBy.push(userId);
       video.views += 1;
-      await video.save();
-    }
 
+      // Trim old entries to avoid large arrays
+      if (video.viewsBy.length > 5000) {
+        video.viewsBy = video.viewsBy.slice(-3000);
+      }
+
+      await video.save();
+    } else {
+      console.log("View already counted for viewer:", userId);
+    }
     res.json({ views: video.views });
   } catch (err) {
-    console.error('View update failed:', err);
+    console.error("View update failed:", err);
     res.status(500).json({ message: err.message });
   }
 };
 
-// 11.Track watch time
+// 11. Add Watch Time and Update User History
 exports.addWatchTime = async (req, res) => {
   try {
     const { secondsWatched } = req.body;
     if (!secondsWatched || secondsWatched <= 0)
-      return res.status(400).json({ message: 'Invalid watch time' });
+      return res.status(400).json({ message: "Invalid watch time" });
 
     const video = await Video.findById(req.params.id);
-    if (!video) return res.status(404).json({ message: 'Video not found' });
+    if (!video) return res.status(404).json({ message: "Video not found" });
 
-    // Update total watch time
-    video.totalWatchTime += secondsWatched;
+    // Update video analytics
+    video.totalWatchTime = (video.totalWatchTime || 0) + Number(secondsWatched);
 
-    // Recalculate average
-    const totalViews = video.views || 1; 
-    video.avgWatchTime = (video.totalWatchTime / totalViews).toFixed(2);
+    // Ensure views count is not zero before calculating avg
+    video.views = Math.max(video.views || 0, 1);
+
+    // Average = total watch time / total views
+    video.avgWatchTime = Number(
+      (video.totalWatchTime / video.views).toFixed(2)
+    );
 
     await video.save();
-    res.json({
-      message: 'Watch time updated',
+
+    // If logged in, update user's history & progress
+    if (req.user) {
+      const History = require("../models/History");
+      const userId = req.user._id;
+
+      // Get or create user's watch history for this video
+      let history = await History.findOne({ user: userId, videoId: video._id });
+
+      // If no history exists, initialize it
+      if (!history) {
+        history = new History({
+          user: userId,
+          videoId: video._id,
+          title: video.title,
+          url: video.url,
+          thumbnail: video.thumbnail,
+          watchedSeconds: 0,
+          totalDuration: video.duration || 0,
+        });
+      }
+
+      // Calculate new watched time
+      const currentDuration = video.duration || 0;
+      const newWatchedSeconds = Math.min(
+        history.watchedSeconds + secondsWatched,
+        currentDuration > 0 ? currentDuration : Number.MAX_SAFE_INTEGER
+      );
+
+      // Update history safely
+      history.watchedSeconds = newWatchedSeconds;
+      history.totalDuration = currentDuration;
+      history.watchedAt = new Date();
+
+      await history.save();
+    }
+
+    return res.json({
+      message: "Watch time updated successfully",
       totalWatchTime: video.totalWatchTime,
       avgWatchTime: video.avgWatchTime,
     });
   } catch (err) {
-    console.error('WatchTime update failed:', err);
+    console.error("WatchTime update failed:", err);
     res.status(500).json({ message: err.message });
   }
 };
-
