@@ -138,3 +138,51 @@ exports.resendOtp = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+/** SEND RESET OTP **/
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user)
+      return res.status(404).json({ message: "No user found with this email" });
+
+    const otp = genOTP();
+    user.otpCode = otp;
+    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    const html = renderTemplate("forgetmail", { otp });
+    await sendEmail({
+      to: user.email,
+      subject: "Your Streamify Password Reset OTP",
+      html,
+    });
+
+    res.json({ message: "OTP sent successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/** VERIFY OTP + RESET PASSWORD **/
+exports.resetPassword = async (req, res) => {
+  try {
+    const { email, code, newPassword } = req.body;
+    const user = await User.findOne({ email });
+    if (!user || user.otpCode !== code)
+      return res.status(400).json({ message: "Invalid OTP or email" });
+    if (user.otpExpires < new Date())
+      return res.status(400).json({ message: "OTP expired" });
+
+    user.password = newPassword;
+    user.otpCode = null;
+    user.otpExpires = null;
+    await user.save();
+
+    res.json({ message: "Password reset successful" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+

@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Streamify Password Reset</title>
+    <style>
+      body {
+        margin: 0;
+        background: #f4f6fb;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, sans-serif;
+        color: #1a1a1a;
+      }
+      .container {
+        max-width: 520px;
+        margin: 40px auto;
+        background: #ffffff;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+      }
+      .hero {
+        background: linear-gradient(135deg, #4f46e5, #6366f1);
+        padding: 30px 20px;
+        text-align: center;
+        color: #ffffff;
+      }
+      .hero h2 {
+        margin: 0 0 8px;
+        font-size: 24px;
+      }
+      .hero p {
+        margin: 0;
+        font-size: 15px;
+        opacity: 0.9;
+      }
+      .content {
+        padding: 28px 20px;
+        text-align: center;
+      }
+      .otp {
+        font-size: 32px;
+        letter-spacing: 8px;
+        font-weight: 900;
+        color: #ffffff;
+        background: #1e293b;
+        border: 2px solid #4f46e5;
+        padding: 16px 20px;
+        border-radius: 12px;
+        display: inline-block;
+        margin: 10px 0 20px;
+        box-shadow: 0 0 10px rgba(79, 70, 229, 0.5);
+      }
+      .message {
+        font-size: 15px;
+        color: #334155;
+        margin-bottom: 16px;
+      }
+      .muted {
+        color: #64748b;
+        font-size: 14px;
+      }
+      .footer {
+        background: #f1f5f9;
+        color: #64748b;
+        padding: 16px;
+        text-align: center;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="hero">
+        <h2>Password Reset Request</h2>
+        <p>We received a request to reset your Streamify password.</p>
+      </div>
+
+      <div class="content">
+        <p class="message">Use the following code to reset your password:</p>
+        <div class="otp">{{otp}}</div>
+        <p class="muted">
+          This code will expire in 10 minutes. <br />
+        </p>
+      </div>
+
+      <div class="footer">© Streamify • Secure automated message</div>
+    </div>
+  </body>
+</html>

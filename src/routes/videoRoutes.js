@@ -29,8 +29,8 @@ router.post('/:id/watchtime', authOptional, addWatchTime);
 router.put('/:id', auth, updateVideo);
 router.put('/:id/thumbnail', auth, uploadImage.single('thumbnail'), updateThumbnail);
 
-router.post('/:id/like', auth, toggleLike);
-router.post('/:id/share', auth, share);
+router.post('/:id/like', authOptional, toggleLike);
+router.post('/:id/share', authOptional, share);
 router.delete('/:id', auth, deleteVideo);
 
 module.exports = router;

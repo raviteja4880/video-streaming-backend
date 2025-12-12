@@ -17,7 +17,7 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
-// New: Upload avatar and update user profile
+// Upload avatar and update user profile
 exports.uploadAvatar = async (req, res, next) => {
   try {
     if (!req.file) {
@@ -35,5 +35,16 @@ exports.uploadAvatar = async (req, res, next) => {
   } catch (err) {
     console.error('Upload failed:', err);
     next(err); 
+  }
+};
+
+// remove avatar from user profile
+exports.removeAvatar = async (req, res) => {
+  try {
+    req.user.avatar = null;
+    await req.user.save();
+    res.json({ success: true, message: 'Avatar removed successfully' });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 };

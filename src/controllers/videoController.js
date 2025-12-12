@@ -64,20 +64,28 @@ exports.uploadVideo = async (req, res) => {
 exports.toggleLike = async (req, res) => {
   try {
     const video = await Video.findById(req.params.id);
-    if (!video) return res.status(404).json({ message: 'Video not found' });
+    if (!video) return res.status(404).json({ message: "Video not found" });
 
-    const userId = req.user._id;
-    const index = video.likes.indexOf(userId);
+    // Support both logged-in users and guests
+    const likerId = req.user?._id?.toString() || req.viewerId;
+    if (!likerId) return res.status(400).json({ message: "Missing liker ID" });
+
+    const index = video.likes.findIndex((id) => id === likerId);
 
     if (index === -1) {
-      video.likes.push(userId);
+      video.likes.push(likerId);
     } else {
       video.likes.splice(index, 1);
     }
 
     await video.save();
-    res.json({ message: 'Like toggled', likesCount: video.likes.length });
+    res.json({
+      message: "Like toggled",
+      likesCount: video.likes.length,
+      likedByUser: index === -1,
+    });
   } catch (err) {
+    console.error("Toggle like failed:", err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -86,14 +94,19 @@ exports.toggleLike = async (req, res) => {
 exports.share = async (req, res) => {
   try {
     const video = await Video.findById(req.params.id);
-    if (!video) return res.status(404).json({ message: 'Video not found' });
+    if (!video) return res.status(404).json({ message: "Video not found" });
 
-    // Placeholder: In real app, track share count or generate share link
+    // Increment share count
+    video.shares = (video.shares || 0) + 1;
+    await video.save();
+
     res.json({
-      message: 'Share link generated',
-      shareLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/videos/${video._id}`,
+      message: "Share link generated",
+      shareLink: `${process.env.FRONTEND_URL || "http://localhost:5173"}/video/${video._id}`,
+      shares: video.shares,
     });
   } catch (err) {
+    console.error("Share failed:", err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -199,28 +212,38 @@ exports.addWatchTime = async (req, res) => {
     const video = await Video.findById(req.params.id);
     if (!video) return res.status(404).json({ message: "Video not found" });
 
-    // Update video analytics
+    // --- Total Watch Time ---
     video.totalWatchTime = (video.totalWatchTime || 0) + Number(secondsWatched);
 
-    // Ensure views count is not zero before calculating avg
-    video.views = Math.max(video.views || 0, 1);
+    // --- Logged-in User or Guest ---
+    if (req.user) {
+      video.userWatchTime = (video.userWatchTime || 0) + Number(secondsWatched);
+      video.userViews = Math.max(video.userViews || 0, 1);
+      console.log(
+        `[WATCH] USER ${req.user._id} watched ${secondsWatched}s on ${video.title}`
+      );
+    } else if (req.viewerId) {
+      video.guestWatchTime = (video.guestWatchTime || 0) + Number(secondsWatched);
+      video.guestViews = Math.max(video.guestViews || 0, 1);
+      console.log(
+        `[WATCH] GUEST ${req.viewerId} watched ${secondsWatched}s on ${video.title}`
+      );
+    }
 
-    // Average = total watch time / total views
+    // --- Safe Avg Calculation ---
+    video.views = Math.max(video.views || 0, 1);
     video.avgWatchTime = Number(
       (video.totalWatchTime / video.views).toFixed(2)
     );
 
     await video.save();
 
-    // If logged in, update user's history & progress
+    // ---  If logged in, update watch history ---
     if (req.user) {
       const History = require("../models/History");
       const userId = req.user._id;
 
-      // Get or create user's watch history for this video
       let history = await History.findOne({ user: userId, videoId: video._id });
-
-      // If no history exists, initialize it
       if (!history) {
         history = new History({
           user: userId,
@@ -233,14 +256,12 @@ exports.addWatchTime = async (req, res) => {
         });
       }
 
-      // Calculate new watched time
       const currentDuration = video.duration || 0;
       const newWatchedSeconds = Math.min(
         history.watchedSeconds + secondsWatched,
         currentDuration > 0 ? currentDuration : Number.MAX_SAFE_INTEGER
       );
 
-      // Update history safely
       history.watchedSeconds = newWatchedSeconds;
       history.totalDuration = currentDuration;
       history.watchedAt = new Date();
@@ -248,9 +269,12 @@ exports.addWatchTime = async (req, res) => {
       await history.save();
     }
 
+    // ---  Respond with updated stats ---
     return res.json({
       message: "Watch time updated successfully",
       totalWatchTime: video.totalWatchTime,
+      userWatchTime: video.userWatchTime,
+      guestWatchTime: video.guestWatchTime,
       avgWatchTime: video.avgWatchTime,
     });
   } catch (err) {
