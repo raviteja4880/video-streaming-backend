@@ -17,24 +17,35 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
-// Upload avatar and update user profile
+// Upload avatar
 exports.uploadAvatar = async (req, res, next) => {
   try {
     if (!req.file) {
-      throw new Error('No file received. Check your Postman form-data key (must be "avatar").');
+      return res.status(400).json({ message: "No file received" });
     }
 
-    req.user.avatar = req.file.path; 
+    const avatarUrl =
+      req.file.path ||
+      req.file.secure_url ||
+      req.file.url ||
+      cloudinary.url(req.file.filename, {
+        secure: true,
+        transformation: [
+          { width: 300, height: 300, crop: "fill", quality: "auto" }
+        ],
+      });
+
+    req.user.avatar = avatarUrl;
     await req.user.save();
 
     res.json({
       success: true,
-      avatar: req.user.avatar,
-      message: 'Avatar uploaded successfully!',
+      avatar: avatarUrl,
+      message: "Avatar uploaded successfully!",
     });
   } catch (err) {
-    console.error('Upload failed:', err);
-    next(err); 
+    console.error("Upload failed:", err);
+    next(err);
   }
 };
 

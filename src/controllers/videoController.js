@@ -37,10 +37,12 @@ exports.uploadVideo = async (req, res) => {
 
     // Generate a video thumbnail URL using Cloudinary transformation
     const publicId = uploadResult.public_id;
-    const thumbnailUrl = cloudinary.url(publicId + ".jpg", {
+    const thumbnailUrl = cloudinary.url(publicId, {
       resource_type: "video",
       format: "jpg",
-      transformation: [{ width: 640, height: 360, crop: "fill", quality: "auto" }],
+      transformation: [
+        { width: 640, height: 360, crop: "fill", quality: "auto" }
+      ],
     });
 
     const video = new Video({

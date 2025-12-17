@@ -9,7 +9,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// ✅ Storage for images (avatars, thumbnails, etc.)
+// Storage for images (avatars, thumbnails, etc.)
 const imageStorage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -26,7 +26,7 @@ const imageStorage = new CloudinaryStorage({
   },
 });
 
-// ✅ Storage for videos
+// Storage for videos
 const videoStorage = new CloudinaryStorage({
   cloudinary,
   params: {
