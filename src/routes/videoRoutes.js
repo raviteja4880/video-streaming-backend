@@ -13,7 +13,8 @@ const {
   updateVideo,
   updateThumbnail,
   addView,
-  addWatchTime
+  addWatchTime,
+  getVideoAnalytics,
 } = require('../controllers/videoController');
 
 const router = express.Router();
@@ -21,6 +22,8 @@ const router = express.Router();
 router.get('/mine', auth, getMyVideos);
 router.get('/', feed);
 router.get('/:id', getOne);
+
+router.get('/:id/analytics', auth, getVideoAnalytics);
 
 router.post('/', auth, uploadVideo.single('video'), uploadController);
 router.post('/:id/view', authOptional, addView);

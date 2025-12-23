@@ -30,16 +30,16 @@ exports.uploadVideo = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No video file uploaded' });
 
-    // Upload video to Cloudinary
     const uploadResult = await cloudinary.uploader.upload(req.file.path, {
       resource_type: "video",
     });
 
-    // Generate a video thumbnail URL using Cloudinary transformation
+    // Generate thumbnail
     const publicId = uploadResult.public_id;
     const thumbnailUrl = cloudinary.url(publicId, {
       resource_type: "video",
       format: "jpg",
+      secure: true, 
       transformation: [
         { width: 640, height: 360, crop: "fill", quality: "auto" }
       ],
@@ -66,25 +66,34 @@ exports.uploadVideo = async (req, res) => {
 exports.toggleLike = async (req, res) => {
   try {
     const video = await Video.findById(req.params.id);
-    if (!video) return res.status(404).json({ message: "Video not found" });
+    if (!video)
+      return res.status(404).json({ message: "Video not found" });
 
-    // Support both logged-in users and guests
-    const likerId = req.user?._id?.toString() || req.viewerId;
-    if (!likerId) return res.status(400).json({ message: "Missing liker ID" });
+    const likerId =
+      req.user?._id?.toString() || req.body.viewerId;
 
-    const index = video.likes.findIndex((id) => id === likerId);
+    if (!likerId)
+      return res.status(400).json({ message: "Missing liker ID" });
 
+    const index = video.likes.findIndex(
+      (id) => id.toString() === likerId
+    );
+
+    let liked;
     if (index === -1) {
       video.likes.push(likerId);
+      liked = true;
     } else {
       video.likes.splice(index, 1);
+      liked = false;
     }
 
     await video.save();
+
     res.json({
-      message: "Like toggled",
+      message: liked ? "Liked" : "Unliked",
       likesCount: video.likes.length,
-      likedByUser: index === -1,
+      liked,
     });
   } catch (err) {
     console.error("Toggle like failed:", err);
@@ -179,25 +188,41 @@ exports.addView = async (req, res) => {
     const video = await Video.findById(req.params.id);
     if (!video) return res.status(404).json({ message: "Video not found" });
 
-    // Determine unique viewer identity
-    const userId =
-      req.user?._id?.toString() || req.viewerId || req.ip || "unknown";
+    const viewerId =
+      req.user?._id?.toString() ||
+      req.body.viewerId ||
+      req.ip;
 
-    // Add view only if not already counted
-    if (!video.viewsBy.includes(userId)) {
-      video.viewsBy.push(userId);
+    if (!viewerId) {
+      return res.status(400).json({ message: "Missing viewer ID" });
+    }
+
+    if (!video.viewsBy.includes(viewerId)) {
+      video.viewsBy.push(viewerId);
+
+      // REAL VIEW COUNT
       video.views += 1;
 
-      // Trim old entries to avoid large arrays
+      // SPLIT USER / GUEST VIEWS
+      if (req.user) {
+        video.userViews = (video.userViews || 0) + 1;
+      } else {
+        video.guestViews = (video.guestViews || 0) + 1;
+      }
+
+      // prevent unbounded growth
       if (video.viewsBy.length > 5000) {
         video.viewsBy = video.viewsBy.slice(-3000);
       }
 
       await video.save();
-    } else {
-      console.log("View already counted for viewer:", userId);
     }
-    res.json({ views: video.views });
+
+    res.json({
+      views: video.views,
+      userViews: video.userViews,
+      guestViews: video.guestViews,
+    });
   } catch (err) {
     console.error("View update failed:", err);
     res.status(500).json({ message: err.message });
@@ -208,70 +233,36 @@ exports.addView = async (req, res) => {
 exports.addWatchTime = async (req, res) => {
   try {
     const { secondsWatched } = req.body;
-    if (!secondsWatched || secondsWatched <= 0)
+    if (!secondsWatched || secondsWatched <= 0) {
       return res.status(400).json({ message: "Invalid watch time" });
-
-    const video = await Video.findById(req.params.id);
-    if (!video) return res.status(404).json({ message: "Video not found" });
-
-    // --- Total Watch Time ---
-    video.totalWatchTime = (video.totalWatchTime || 0) + Number(secondsWatched);
-
-    // --- Logged-in User or Guest ---
-    if (req.user) {
-      video.userWatchTime = (video.userWatchTime || 0) + Number(secondsWatched);
-      video.userViews = Math.max(video.userViews || 0, 1);
-      console.log(
-        `[WATCH] USER ${req.user._id} watched ${secondsWatched}s on ${video.title}`
-      );
-    } else if (req.viewerId) {
-      video.guestWatchTime = (video.guestWatchTime || 0) + Number(secondsWatched);
-      video.guestViews = Math.max(video.guestViews || 0, 1);
-      console.log(
-        `[WATCH] GUEST ${req.viewerId} watched ${secondsWatched}s on ${video.title}`
-      );
     }
 
-    // --- Safe Avg Calculation ---
-    video.views = Math.max(video.views || 0, 1);
+    const video = await Video.findById(req.params.id);
+    if (!video) {
+      return res.status(404).json({ message: "Video not found" });
+    }
+
+    // TOTAL WATCH TIME
+    video.totalWatchTime =
+      (video.totalWatchTime || 0) + Number(secondsWatched);
+
+    // USER / GUEST WATCH TIME
+    if (req.user) {
+      video.userWatchTime =
+        (video.userWatchTime || 0) + Number(secondsWatched);
+    } else {
+      video.guestWatchTime =
+        (video.guestWatchTime || 0) + Number(secondsWatched);
+    }
+
+    // AVG WATCH TIME (BASED ON REAL VIEWS)
+    const safeViews = Math.max(video.views || 1, 1);
     video.avgWatchTime = Number(
-      (video.totalWatchTime / video.views).toFixed(2)
+      (video.totalWatchTime / safeViews).toFixed(2)
     );
 
     await video.save();
 
-    // ---  If logged in, update watch history ---
-    if (req.user) {
-      const History = require("../models/History");
-      const userId = req.user._id;
-
-      let history = await History.findOne({ user: userId, videoId: video._id });
-      if (!history) {
-        history = new History({
-          user: userId,
-          videoId: video._id,
-          title: video.title,
-          url: video.url,
-          thumbnail: video.thumbnail,
-          watchedSeconds: 0,
-          totalDuration: video.duration || 0,
-        });
-      }
-
-      const currentDuration = video.duration || 0;
-      const newWatchedSeconds = Math.min(
-        history.watchedSeconds + secondsWatched,
-        currentDuration > 0 ? currentDuration : Number.MAX_SAFE_INTEGER
-      );
-
-      history.watchedSeconds = newWatchedSeconds;
-      history.totalDuration = currentDuration;
-      history.watchedAt = new Date();
-
-      await history.save();
-    }
-
-    // ---  Respond with updated stats ---
     return res.json({
       message: "Watch time updated successfully",
       totalWatchTime: video.totalWatchTime,
@@ -282,5 +273,41 @@ exports.addWatchTime = async (req, res) => {
   } catch (err) {
     console.error("WatchTime update failed:", err);
     res.status(500).json({ message: err.message });
+  }
+};
+
+// 12. Get Video Analytics
+exports.getVideoAnalytics = async (req, res) => {
+  try {
+    const video = await Video.findOne({
+      _id: req.params.id,
+      user: req.user._id 
+    });
+
+    if (!video) {
+      return res.status(404).json({ message: "Video not found" });
+    }
+
+    res.json({
+      title: video.title,
+
+      views: video.views,
+      userViews: video.userViews,
+      guestViews: video.guestViews,
+
+      likes: video.likes.length,
+      shares: video.shares,
+
+      totalWatchTime: video.totalWatchTime,
+      avgWatchTime: video.avgWatchTime,
+
+      userWatchTime: video.userWatchTime,
+      guestWatchTime: video.guestWatchTime,
+
+      createdAt: video.createdAt
+    });
+  } catch (err) {
+    console.error("Analytics error:", err);
+    res.status(500).json({ message: "Failed to load analytics" });
   }
 };
